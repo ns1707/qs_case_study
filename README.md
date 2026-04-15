@@ -15,7 +15,7 @@ task1/
 
 ## task 2  — Matrix 90 deg rotation issue.
 A python script executing an inplace matrix rotation.
-The bug was multiple rotation of already rotated elements.
+The bug was multiple rotations of already rotated elements.
 The issue is fixed with a layered 4-way swap technique.
 
 ### Project Structure
@@ -26,8 +26,6 @@ task2/
 ```
 
 ## task 3 — C++ Communication Library
-
-Case study for Quantum Systems - Linux Development Engineer.
 A class for UDP communication, supporting blocking, non-blocking, and periodic send modes.
 
 ### Project Structure
