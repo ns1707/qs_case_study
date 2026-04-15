@@ -1,0 +1,166 @@
+@startuml comm_class_diagram
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+
+package "comm (interface)" {
+
+  enum ProtocolType {
+    udp
+    unspecified
+  }
+
+  enum SendMode {
+    blocking
+    nonBlocking
+    periodic
+    timed
+  }
+
+  enum PayloadType {
+    data
+    command
+  }
+
+  enum CommandType {
+    start
+    stop
+  }
+
+  class "Payload<T>" as Payload_T {
+    +type : PayloadType
+    +content : T
+    +serialize() : vector<uint8_t>
+  }
+
+  enum OutputType {
+    ok
+    error
+    timeout
+  }
+
+  enum CommunicationError {
+    none
+    invalidIp
+    invalidPort
+    socketCreationFailed
+    socketOptionFailed
+    bindFailed
+    connectionFailed
+    sendFailed
+    sendBufferFull
+    sendMessageTooLarge
+    sendInterrupted
+    sendNotConnected
+    partialSend
+    sendPayloadEmpty
+    receiveFailed
+    receiveBufferTooSmall
+    receivePayloadEmpty
+    closeFailed
+    notInitialized
+    alreadyInitialized
+    invalidConfiguration
+    unsupportedOperation
+    delayError
+    unknown
+  }
+
+  struct OperationResult {
+    +output : OutputType
+    +error : CommunicationError
+  }
+
+  interface ICommunication {
+    +{abstract} initialize() : OperationResult
+    +{abstract} connect() : OperationResult
+    +{abstract} send(data : const uint8_t*, size : size_t, mode : SendMode, delayMs : uint32_t) : OperationResult
+    +{abstract} receive(buffer : uint8_t*, bufferSize : size_t, bytesReceived : size_t&) : OperationResult
+    +{abstract} close() : OperationResult
+    +{abstract} timeout() : uint32_t
+  }
+
+  class CommunicationBuilder {
+    -m_protocol : ProtocolType
+    -m_ip : string
+    -m_port : uint16_t
+    -m_timeoutMs : uint32_t
+    -m_hasProtocol : bool
+    +CommunicationBuilder()
+    +withProtocol(protocol : ProtocolType) : CommunicationBuilder&
+    +withIp(ip : string) : CommunicationBuilder&
+    +withPort(port : uint16_t) : CommunicationBuilder&
+    +withTimeout(timeoutMs : uint32_t) : CommunicationBuilder&
+    +build() : unique_ptr<ICommunication>
+  }
+}
+
+package "comm (impl)" {
+
+  class CommunicationBase {
+    -m_ip : string
+    -m_port : uint16_t
+    -m_initialized : bool
+    -m_socketFd : int
+    -m_timeoutMs : uint32_t
+    +CommunicationBase(ip : string, port : uint16_t, timeoutMs : uint32_t)
+    +timeout() : uint32_t
+    +close() : OperationResult
+    #applyDelay(delayMs : uint32_t) : void
+    #socketFdRef() : int&
+    #isInitialized() : bool
+    #markInitialized(value : bool) : void
+    #makeAddress() : sockaddr_in
+    #{static} isValidPort(port : uint16_t) : bool
+    #validateConfiguration() : OperationResult
+    #{static} isValidIp(ip : string) : bool
+  }
+
+  class Udp {
+    -m_stopRequested : atomic<bool>
+    -m_periodicThread : thread
+    -isConfigValidated : bool
+    +Udp(ip : string, port : uint16_t, timeoutMs : uint32_t)
+    +~Udp()
+    +initialize() : OperationResult
+    +connect() : OperationResult
+    +send(data : const uint8_t*, size : size_t, mode : SendMode, delayMs : uint32_t) : OperationResult
+    +receive(buffer : uint8_t*, bufferSize : size_t, bytesReceived : size_t&) : OperationResult
+    +stopPeriodicSend() : void
+    -sendImmediate(data : const uint8_t*, size : size_t) : OperationResult
+    -sendNonBlocking(data : const uint8_t*, size : size_t, delayMs : uint32_t) : OperationResult
+    -{static} mapSendError(errnoValue : int) : OperationResult
+    -startPeriodicSend(data : const uint8_t*, size : size_t, intervalMs : uint32_t) : OperationResult
+  }
+}
+
+package "comm::utils" {
+
+  class SocketUtils {
+    +{static} isValidPort(port : uint16_t) : bool
+    +{static} isValidIp(ip : string) : bool
+    +{static} closeSocket(fd : int&) : OperationResult
+    +{static} setReceiveTimeout(fd : int, timeoutMs : int) : bool
+    +{static} setSendTimeout(fd : int, timeoutMs : int) : bool
+  }
+}
+
+Payload_T --> PayloadType
+
+OperationResult --> OutputType
+OperationResult --> CommunicationError
+
+CommunicationBase --|> ICommunication
+Udp --|> CommunicationBase
+
+CommunicationBuilder ..> ICommunication : <<creates>>
+CommunicationBuilder ..> Udp : <<instantiates>>
+CommunicationBuilder --> ProtocolType
+
+CommunicationBase ..> SocketUtils : <<uses>>
+Udp ..> SocketUtils : <<uses>>
+
+ICommunication ..> OperationResult : <<returns>>
+ICommunication ..> SendMode : <<uses>>
+
+@enduml
