@@ -30,26 +30,32 @@ task2/
 Case study for Quantum Systems - Linux Development Engineer.
 A class for UDP communication, supporting blocking, non-blocking, and periodic send modes.
 
+### Prerequisites
+**Linux only** — The library is developed for a linux system. Due to the usage of POSIX sockets (`sys/socket.h`, `arpa/inet.h`)
+and it is not portable to windows.
+
 ### Project Structure
 
 ```
 task3/
 ├── src/
-│   ├── main.cpp                              # Example usage and test cases
+│   ├── main.cpp                          # Example usage and test cases
 │   ├── comm/
 │   │   ├── interface/
-│   │   │   ├── comm_types.hpp                # Enums, Payload<T>, OperationResult
-│   │   │   ├── iCommunication.hpp            # ICommunication interface
-│   │   │   └── communication_builder.hpp     # Builder API
+│   │   │   ├── comm_types.hpp            # Enums, Payload<T>, OperationResult
+│   │   │   ├── iCommunication.hpp        # ICommunication interface
+│   │   │   └── communication_builder.hpp # Builder API
 │   │   └── impl/
-│   │       ├── communication_base.cpp/hpp    # Shared base (socket, config, validation)
-│   │       ├── communication_builder.cpp     # Builder implementation
-│   │       └── udp.cpp/hpp                   # UDP implementation
+│   │       ├── communication_base.cpp/hpp  # Shared base (socket, config, validation)
+│   │       ├── communication_builder.cpp   # Builder implementation
+│   │       ├── send_scheduler.hpp          # Generic send scheduler (delayed & periodic)
+│   │       └── udp.cpp/hpp                 # UDP implementation
 │   ├── utils/
-│   │   └── socket_utils.hpp                  # Socket helpers (close, timeout, validation)
-│   └── external/                             # Reserved for third-party dependencies
-└── doc/
-    └── communication_builder.puml            # PlantUML class diagram
+│   │   └── socket_utils.hpp              # Socket helpers (close, timeout, validation)
+│   └── external/                         # Reserved for third-party dependencies
+├── doc/
+│   └── communication_builder.puml        # PlantUML class diagram
+
 ```
 
 ### Building

@@ -96,9 +96,21 @@ int main() {
     }
     else
     {
-        std::cout << "send periodic succeeded" << std::endl;
+        std::cout << "send periodic requested successfully" << std::endl;
     }
 
+    // Let periodic sends run; poll for failures
+    for (int i = 0; i < 10; ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        OperationResult periodicResult = comm->lastSendResult();
+        if (periodicResult.error != CommunicationError::none)
+        {
+            std::cout << "periodic send failed mid-flight: error="
+                      << static_cast<int>(periodicResult.error) << std::endl;
+            break;
+        }
+    }
 
 
     result = comm->close();
@@ -113,34 +125,126 @@ int main() {
     }
 
 
-    // --- Test: non-blocking send should fail on unconnected socket ---
-    std::cout << "\n=== Test: non-blocking send on unconnected socket ===" << std::endl;
-    std::unique_ptr<ICommunication> commFail =
-        CommunicationBuilder()
+    // =========================================================================
+    // Edge-case tests
+    // =========================================================================
+    int passed = 0;
+    int failed = 0;
+
+    auto check = [&](const char* name, bool condition) {
+        if (condition) { ++passed; std::cout << "  PASS: " << name << std::endl; }
+        else           { ++failed; std::cout << "  FAIL: " << name << std::endl; }
+    };
+
+    auto makeComm = [&](){
+        return CommunicationBuilder()
             .withProtocol(protocol)
             .withIp(server_address)
             .withPort(server_port)
             .withTimeout(timeoutMs)
             .build();
+    };
 
-    result = commFail->initialize();
-    if (result.error != CommunicationError::none) {
-        std::cout << "initialize failed: " << static_cast<int>(result.error) << std::endl;
-        return 1;
-    }
+    const Payload<std::string> testPayload {PayloadType::data, "edge-case test\n"};
+    const auto testBuf = testPayload.serialize();
 
-    // Skip connect() — send will fail with EDESTADDRREQ
-    const Payload<std::string> failPayload {PayloadType::data, "this should fail"};
-    const auto failBuffer = failPayload.serialize();
-    result = commFail->send(failBuffer.data(), failBuffer.size(), comm::SendMode::nonBlocking);
-    if (result.error != CommunicationError::none) {
-        std::cout << "PASS: non-blocking send failed as expected, error="
-                  << static_cast<int>(result.error) << std::endl;
-    }
-    else
+    // --- 1. Blocking send edge cases ---
+    std::cout << "\n=== Blocking send edge cases ===" << std::endl;
     {
-        std::cout << "FAIL: non-blocking send should have failed" << std::endl;
+        // 1a. send on uninitialized socket
+        auto c = makeComm();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::blocking);
+        check("blocking on uninitialized → notInitialized",
+              result.error == CommunicationError::notInitialized);
     }
-    commFail->close();
+    {
+        // 1b. send on initialized but unconnected socket (blocking)
+        auto c = makeComm(); c->initialize();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::blocking);
+        check("blocking on unconnected → send error",
+              result.error != CommunicationError::none);
+        c->close();
+    }
+
+    // --- 2. Non-blocking send edge cases ---
+    {
+        // 2a. delayMs = 999 (just below min) → delayError
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::nonBlocking, 999U);
+        check("nonBlocking delayMs=999 → delayError",
+              result.error == CommunicationError::delayError);
+        c->close();
+    }
+    {
+        // 2b. delayMs = 1000 (lower boundary) → ok
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::nonBlocking, 1000U);
+        check("nonBlocking delayMs=1000 → ok",
+              result.error == CommunicationError::none);
+        c->close();
+    }
+    {
+        // 2c. delayMs = 255000 (upper boundary) → ok
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::nonBlocking, 255000U);
+        check("nonBlocking delayMs=255000 → ok",
+              result.error == CommunicationError::none);
+        c->close();
+    }
+    {
+        // 2d. delayMs = 255001 (above max) → delayError
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::nonBlocking, 255001U);
+        check("nonBlocking delayMs=255001 → delayError",
+              result.error == CommunicationError::delayError);
+        c->close();
+    }
+    {
+        // 2e. nullptr payload
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(nullptr, 10, SendMode::nonBlocking, 2000U);
+        check("nonBlocking nullptr payload → sendPayloadEmpty",
+              result.error == CommunicationError::sendPayloadEmpty);
+        c->close();
+    }
+
+    // --- 3. Periodic send edge cases ---
+    std::cout << "\n=== Periodic send edge cases ===" << std::endl;
+    {
+        // 3a. delayMs = 999 (just below min) → delayError
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::periodic, 999U);
+        check("periodic delayMs=999 → delayError",
+              result.error == CommunicationError::delayError);
+        c->close();
+    }
+    {
+        // 3b. delayMs = 1000 (lower boundary) → ok
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::periodic, 1000U);
+        check("periodic delayMs=1000 → ok",
+              result.error == CommunicationError::none);
+        c->close();
+    }
+    {
+        // 3c. delayMs = 255000 (upper boundary) → ok
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::periodic, 255000U);
+        check("periodic delayMs=255000 → ok",
+              result.error == CommunicationError::none);
+        c->close();
+    }
+    {
+        // 3d. delayMs = 255001 (above max) → delayError
+        auto c = makeComm(); c->initialize(); c->connect();
+        result = c->send(testBuf.data(), testBuf.size(), SendMode::periodic, 255001U);
+        check("periodic delayMs=255001 → delayError",
+              result.error == CommunicationError::delayError);
+        c->close();
+    }
+
+    std::cout << "\n=== Results: " << passed << " passed, "
+              << failed << " failed ===" << std::endl;
+
     return 0;
 }

@@ -2,10 +2,12 @@
 #define SRC_COMM_UDP_HPP
 
 #include <atomic>
+#include <mutex>
 #include <thread>
 
 #include <communication_base.hpp>
 #include <iCommunication.hpp>
+#include <send_scheduler.hpp>
 
 namespace comm {
 
@@ -36,31 +38,38 @@ public:
   // Receive data from the communication channel.
   OperationResult receive(std::uint8_t* buffer, std::size_t bufferSize, std::size_t& bytesReceived) override;
 
+  // Get the result of the last asynchronous send.
+  OperationResult lastSendResult() const override;
+
   // Stop the periodic sending of data.
   void stopPeriodicSend();
 private:
 
-  // setting a constant max count for periodic send to prevent infinite sending in this example. In production, this could be made configurable or use a different mechanism to control the sending loop.
-  static constexpr std::uint32_t MAX_PERIODIC_SEND_COUNT = 20U;
+  struct SendAdapter {
+    Udp& owner;
+    OperationResult send(const std::uint8_t* data, std::size_t size) {
+      return owner.sendImmediate(data, size);
+    }
+  };
 
   // Send data over the communication channel without blocking.
   OperationResult sendImmediate(const std::uint8_t* data, std::size_t size);
 
-  // Send data over the communication channel without blocking.
+  // Send data over the communication channel with a delay via the scheduler.
   OperationResult sendNonBlocking(const std::uint8_t* data, std::size_t size, const std::uint32_t delayMs = 0U);
 
   // Map errno from ::send() to an OperationResult.
   static OperationResult mapSendError(int errnoValue);
 
-  // Start periodic sending of data over the communication channel.
+  // Start periodic sending of data over the communication channel via the scheduler.
   OperationResult startPeriodicSend(const std::uint8_t* data,
                                     std::size_t         size,
-                                    std::uint32_t       intervalSeconds);
+                                    std::uint32_t       intervalInMs);
 
-  std::atomic<bool> m_stopRequested{false}; // Flag to signal the periodic send thread to stop
-  std::thread       m_periodicThread;       // periodic send thread
-  bool              m_isConfigValidated{false};  // Flag to indicate if the configuration has been validated
-  OperationResult   m_lastPeriodicSendResult{OutputType::ok, CommunicationError::none}; // Store the last result of periodic send attempts
+  SendAdapter m_sendAdapter;
+  SendScheduler<SendAdapter> m_scheduler;
+  SendScheduler<SendAdapter>::TaskId m_periodicTaskId{0};
+  std::mutex m_sendMutex;
 };
 
 } // namespace comm

@@ -1,3 +1,4 @@
 *.bak
 task3/build/
-
+build/*
+settings.json
