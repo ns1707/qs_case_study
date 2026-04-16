@@ -30,6 +30,9 @@ public:
   // Close the communication channel.
   virtual OperationResult close() = 0;
 
+  // Get the result of the last asynchronous send (non-blocking/periodic).
+  virtual OperationResult lastSendResult() const = 0;
+
   // Get the timeout value of the communication channel.
   virtual std::uint32_t timeout() const = 0;
 };

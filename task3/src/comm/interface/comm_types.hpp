@@ -102,6 +102,8 @@ enum class CommunicationError
   invalidConfiguration,
   unsupportedOperation,
   delayError,
+  schedulerTaskNotFound,
+  invalidArgumentPeriodic,
   unknown
 };
 

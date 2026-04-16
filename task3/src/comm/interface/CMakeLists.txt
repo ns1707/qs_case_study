@@ -10,4 +10,3 @@ target_sources(comm_interface INTERFACE
 target_include_directories(comm_interface INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}
 ) 
-

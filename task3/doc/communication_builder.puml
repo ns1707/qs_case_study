@@ -63,6 +63,8 @@ package "comm (interface)" {
     invalidConfiguration
     unsupportedOperation
     delayError
+    schedulerTaskNotFound
+    invalidArgumentPeriodic
     unknown
   }
 
@@ -77,6 +79,7 @@ package "comm (interface)" {
     +{abstract} send(data : const uint8_t*, size : size_t, mode : SendMode, delayMs : uint32_t) : OperationResult
     +{abstract} receive(buffer : uint8_t*, bufferSize : size_t, bytesReceived : size_t&) : OperationResult
     +{abstract} close() : OperationResult
+    +{abstract} lastSendResult() : OperationResult
     +{abstract} timeout() : uint32_t
   }
 
@@ -117,20 +120,52 @@ package "comm (impl)" {
   }
 
   class Udp {
-    -m_stopRequested : atomic<bool>
-    -m_periodicThread : thread
-    -isConfigValidated : bool
+    -m_sendAdapter : SendAdapter
+    -m_scheduler : SendScheduler<SendAdapter>
+    -m_periodicTaskId : TaskId
+    -m_sendMutex : mutex
     +Udp(ip : string, port : uint16_t, timeoutMs : uint32_t)
     +~Udp()
     +initialize() : OperationResult
     +connect() : OperationResult
     +send(data : const uint8_t*, size : size_t, mode : SendMode, delayMs : uint32_t) : OperationResult
     +receive(buffer : uint8_t*, bufferSize : size_t, bytesReceived : size_t&) : OperationResult
+    +lastSendResult() : OperationResult
     +stopPeriodicSend() : void
     -sendImmediate(data : const uint8_t*, size : size_t) : OperationResult
     -sendNonBlocking(data : const uint8_t*, size : size_t, delayMs : uint32_t) : OperationResult
     -{static} mapSendError(errnoValue : int) : OperationResult
     -startPeriodicSend(data : const uint8_t*, size : size_t, intervalMs : uint32_t) : OperationResult
+  }
+
+  class SendAdapter <<struct>> {
+    -owner : Udp&
+    +send(data : const uint8_t*, size : size_t) : OperationResult
+  }
+
+  class "SendScheduler<T>" as SendScheduler_T {
+    -m_communication : T&
+    -m_queue : priority_queue<Item>
+    -m_tasks : map<TaskId, TaskInfo>
+    -m_mutex : mutex
+    -m_cv : condition_variable
+    -m_worker : thread
+    -m_stop : bool
+    -m_nextTaskId : TaskId
+    -m_nextSequence : uint64_t
+    -m_resultMutex : mutex
+    -m_lastResult : OperationResult
+    +SendScheduler(communication : T&)
+    +~SendScheduler()
+    +start() : OperationResult
+    +stop() : OperationResult
+    +sendWithDelay(data : const uint8_t*, size : size_t, delayMs : uint32_t) : OperationResult
+    +sendPeriodically(data : const uint8_t*, size : size_t, initialDelayMs : uint32_t, periodMs : uint32_t, outTaskId : TaskId&) : OperationResult
+    +cancel(taskId : TaskId) : OperationResult
+    +cancelAll() : OperationResult
+    +lastResult() : OperationResult
+    -schedule(data : const uint8_t*, size : size_t, delayMs : uint32_t, periodMs : uint32_t, periodic : bool, outTaskId : TaskId&) : OperationResult
+    -workerLoop() : void
   }
 }
 
@@ -159,6 +194,11 @@ CommunicationBuilder --> ProtocolType
 
 CommunicationBase ..> SocketUtils : <<uses>>
 Udp ..> SocketUtils : <<uses>>
+
+Udp *-- SendAdapter
+Udp *-- SendScheduler_T
+SendAdapter ..> Udp : <<delegates to>>
+SendScheduler_T ..> OperationResult : <<returns>>
 
 ICommunication ..> OperationResult : <<returns>>
 ICommunication ..> SendMode : <<uses>>
