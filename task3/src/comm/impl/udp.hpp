@@ -50,6 +50,9 @@ private:
     OperationResult send(const std::uint8_t* data, std::size_t size) {
       return owner.sendImmediate(data, size);
     }
+    OperationResult sendNonBlocking(const std::uint8_t* data, std::size_t size) {
+      return owner.sendNonBlockingImmediate(data, size);
+    }
   };
 
   // Send data over the communication channel without blocking.
@@ -57,6 +60,9 @@ private:
 
   // Send data over the communication channel with a delay via the scheduler.
   OperationResult sendNonBlocking(const std::uint8_t* data, std::size_t size, const std::uint32_t delayMs = 0U);
+
+  // Send data over the socket using MSG_DONTWAIT (truly non-blocking).
+  OperationResult sendNonBlockingImmediate(const std::uint8_t* data, std::size_t size);
 
   // Map errno from ::send() to an OperationResult.
   static OperationResult mapSendError(int errnoValue);
