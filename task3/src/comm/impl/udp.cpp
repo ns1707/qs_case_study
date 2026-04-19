@@ -192,6 +192,25 @@ comm::OperationResult Udp::sendNonBlocking(const std::uint8_t* data, std::size_t
   return m_scheduler.sendWithDelay(data, size, delayMs);
 }
 
+comm::OperationResult Udp::sendNonBlockingImmediate(const std::uint8_t* data, std::size_t size)
+{
+  std::lock_guard<std::mutex> lock(m_sendMutex);
+  OperationResult result {OutputType::ok, CommunicationError::none};
+
+  const ssize_t bytesSent = ::send(socketFdRef(), data, size, MSG_DONTWAIT);
+  if (bytesSent < 0)
+  {
+    result = mapSendError(errno);
+  }
+  else if (bytesSent != static_cast<ssize_t>(size))
+  {
+    result = OperationResult{OutputType::error,
+                              CommunicationError::partialSend};
+  }
+
+  return result;
+}
+
 OperationResult Udp::startPeriodicSend(const std::uint8_t* data,
                                        std::size_t         size,
                                        std::uint32_t       intervalInMs)

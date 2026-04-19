@@ -76,7 +76,7 @@ public:
                                   std::uint32_t delayMs)
     {
       TaskId ignored = 0;
-      return schedule(data, size, delayMs, 0, false, ignored);
+      return schedule(data, size, delayMs, 0, false, true, ignored);
     }
 
     // Send data periodically with a specified interval. The initial delay and interval are in milliseconds.
@@ -87,7 +87,7 @@ public:
                                      std::uint32_t periodMs,
                                      TaskId& outTaskId)
     {
-      return schedule(data, size, initialDelayMs, periodMs, true, outTaskId);
+      return schedule(data, size, initialDelayMs, periodMs, true, false, outTaskId);
     }
 
     // Cancel a scheduled task by its TaskId. Returns an OperationResult indicating success or failure.
@@ -130,6 +130,7 @@ private:
     {
       bool periodic = false;
       bool canceled = false;
+      bool nonBlocking = false;
       std::uint32_t periodMs = 0;
     };
 
@@ -161,6 +162,7 @@ private:
                              std::uint32_t delayMs,
                              std::uint32_t periodMs,
                              bool periodic,
+                             bool nonBlocking,
                              TaskId& outTaskId)
     {
       {
@@ -177,7 +179,7 @@ private:
         item.payload.assign(data, data + size);
         item.taskId = taskId;
         item.sequence = m_nextSequence++;  
-        m_tasks[taskId] = TaskInfo{periodic, false, periodMs};
+        m_tasks[taskId] = TaskInfo{periodic, false, nonBlocking, periodMs};
         m_queue.push(std::move(item));
         outTaskId = taskId;
       }  
@@ -225,7 +227,9 @@ private:
           TaskInfo info = m_tasks[item.taskId];
   
           lock.unlock();
-          OperationResult result = m_communication.send(item.payload.data(), item.payload.size());
+          OperationResult result = info.nonBlocking
+              ? m_communication.sendNonBlocking(item.payload.data(), item.payload.size())
+              : m_communication.send(item.payload.data(), item.payload.size());
           {
             std::lock_guard<std::mutex> resultLock(m_resultMutex);
             m_lastResult = result;
